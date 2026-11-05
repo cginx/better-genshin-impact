@@ -6,6 +6,7 @@ using BetterGenshinImpact.Core.Recognition.OpenCv;
 using BetterGenshinImpact.Core.Simulator.Extensions;
 using BetterGenshinImpact.GameTask.AutoSkip.Audio;
 using BetterGenshinImpact.GameTask.AutoSkip.Assets;
+using BetterGenshinImpact.GameTask.AutoSkip.DialogueLog;
 using BetterGenshinImpact.GameTask.AutoSkip.Model;
 using BetterGenshinImpact.GameTask.Common;
 using BetterGenshinImpact.GameTask.Common.Element.Assets;
@@ -171,6 +172,8 @@ public partial class AutoSkipTrigger : ITaskTrigger
     {
         ReleaseChooseOptionWait("触发器关闭");
         ResetPageCloseRecognition();
+        // 停止对白记录，并输出尚未写入的最后一句
+        AutoSkipDialogueLogger.End();
     }
 
     private void InitKeyword()
@@ -267,6 +270,9 @@ public partial class AutoSkipTrigger : ITaskTrigger
                 return;
             }
         }
+
+        // 独立功能：记录被跳过的剧情对白，取帧后交给后台线程识别，不影响后续的点击逻辑
+        AutoSkipDialogueLogger.Observe(content.CaptureRectArea, isPlaying);
 
         if ((DateTime.Now - _prevExecute).TotalMilliseconds <= 200)
         {

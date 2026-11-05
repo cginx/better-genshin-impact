@@ -70,6 +70,23 @@ BetterGI · 更好的原神， 一个基于计算机视觉技术，意图让原�
 ![0 59 1](https://github.com/user-attachments/assets/a65aafe9-d8d7-4ffb-8cdc-9939c2fb3bdf)
 
 
+## 本仓库新增：自动剧情对白记录
+
+自动剧情跳过对话时，会用程序内置的 OCR（PP-OCRv6）识别屏幕下方的角色名与对白，并写入日志：
+
+```text
+[23:30:01.123] [INF] [实例] BetterGenshinImpact.GameTask.AutoSkip.AutoSkipTrigger
+自动剧情：凯瑟琳：欢迎来到冒险家协会，「木偶」大人。有什么我能为您做的吗？
+```
+
+- 日志位置：程序目录 `log/better-genshin-impact.log`，也可以直接在游戏的遮罩日志框中过滤「自动剧情」。
+- 只在自动剧情运行期间记录；关闭自动剧情后停止。识别在独立后台线程执行，不阻塞跳过和选项点击。
+- 连续多帧识别到的同一句会合并去重，打字机效果只保留最终完整文本；换句、离开对白或超过 2 秒没有新画面时输出。
+- 识别区域按 2560x1440 实测并在 `Test/Images/test1.png` 上核对，1080P 下为 `(300, 840, 1320, 200)`；目前只处理常规 16:9 对白，黑屏居中文字和全屏演出字幕暂不支持。
+- Debug 构建会在遮罩上画出红色识别框，方便确认文字是否超出区域；Release 构建不显示。确认无误后可以删除 `AutoSkipDialogueLogger` 中的 `DrawDebugFrame` / `ClearDebugFrame` 调用。
+- 代码位于 `BetterGenshinImpact/GameTask/AutoSkip/DialogueLog/`，对 `AutoSkipTrigger` 只有两处调用，方便后续跟随上游更新。
+
+
 ## 下载
 
 > [!NOTE]
