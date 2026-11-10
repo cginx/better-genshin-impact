@@ -84,6 +84,7 @@ BetterGI · 更好的原神， 一个基于计算机视觉技术，意图让原�
 - 连续多帧识别到的同一句会合并去重，打字机效果只保留最终完整文本；换句、离开对白或超过 2 秒没有新画面时输出。
 - 识别区域按 2560x1440 实测并在 `Test/Images/test1.png` 上核对，1080P 下为 `(300, 840, 1320, 200)`；目前只处理常规 16:9 对白，黑屏居中文字和全屏演出字幕暂不支持。
 ![0 59 2](https://raw.githubusercontent.com/cginx/better-genshin-impact/refs/heads/refactor/20260930/Docs/images/log1.png)
+![0 59 3](https://raw.githubusercontent.com/cginx/better-genshin-impact/refs/heads/refactor/20260930/Docs/images/log2.png)
 
 
 ## 下载
