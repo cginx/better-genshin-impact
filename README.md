@@ -81,7 +81,8 @@ BetterGI · 更好的原神， 一个基于计算机视觉技术，意图让原�
 
 - 日志位置：程序目录 `log/better-genshin-impact.log`，也可以直接在游戏的遮罩日志框中过滤「自动剧情」。
 - 只在自动剧情运行期间记录；关闭自动剧情后停止。识别在独立后台线程执行，不阻塞跳过和选项点击。
-- 连续多帧识别到的同一句会合并去重，打字机效果只保留最终完整文本；换句、离开对白或超过 2 秒没有新画面时输出。可能出现重复。
+- 连续多帧识别到的同一句会合并去重：首尾括号、逗号、省略号不同，OCR 只读到半句，或短句逐字出现（如「哦」→「哦，怎么说？」）时，都视为同一句并只保留最完整的一条；换句、离开对白或超过 2 秒没有新画面时才输出。
+- 自动剧情跳过对白时的点击间隔调整为至少 0.5 秒，让每句对白完整显示后再继续跳过，减少半句和重复记录。
 - 目前只处理常规 16:9 对白，黑屏居中文字和全屏演出字幕暂不支持.
 ![0 59 2](https://raw.githubusercontent.com/cginx/better-genshin-impact/refs/heads/refactor/20260930/Docs/images/log1.png)
 ![0 59 3](https://raw.githubusercontent.com/cginx/better-genshin-impact/refs/heads/refactor/20260930/Docs/images/log2.png)
