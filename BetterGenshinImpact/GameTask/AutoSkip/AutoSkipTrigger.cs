@@ -63,6 +63,11 @@ public partial class AutoSkipTrigger : ITaskTrigger
     private const int PageCloseRecognitionDelayMilliseconds = 200;
 
     /// <summary>
+    /// 跳过对白时两次点击之间的最小间隔（毫秒），给对白完整显示和 OCR 留出时间
+    /// </summary>
+    private const int SkipClickIntervalMilliseconds = 500;
+
+    /// <summary>
     /// 本触发器绑定的运行环境：前后台判断、窗口激活、截图与点击都只使用它
     /// </summary>
     private readonly GameRuntime _runtime;
@@ -154,6 +159,7 @@ public partial class AutoSkipTrigger : ITaskTrigger
         _prevGetDailyRewardsTime = DateTime.MinValue;
         _prevClickTime = DateTime.MinValue;
         _prevBringToFrontTime = DateTime.MinValue;
+        _prevSkipClickTime = DateTime.MinValue;
         _chooseOptionDelayUntil = DateTime.MinValue;
         _chooseOptionWaitRecheckUntil = DateTime.MinValue;
         _pendingBringToFront = false;
@@ -234,6 +240,7 @@ public partial class AutoSkipTrigger : ITaskTrigger
 
     private DateTime _prevClickTime = DateTime.MinValue;
     private DateTime _prevBringToFrontTime = DateTime.MinValue;
+    private DateTime _prevSkipClickTime = DateTime.MinValue;
     private DateTime _chooseOptionDelayUntil = DateTime.MinValue;
     private DateTime _chooseOptionWaitRecheckUntil = DateTime.MinValue;
     private DateTime _pageCloseRecognitionStartTime = DateTime.MinValue;
@@ -329,7 +336,8 @@ public partial class AutoSkipTrigger : ITaskTrigger
         if (isPlaying)
         {
             _prevPlayingTime = DateTime.Now;
-            if (_config.QuicklySkipConversationsEnabled)
+            if (_config.QuicklySkipConversationsEnabled
+                && (DateTime.Now - _prevSkipClickTime).TotalMilliseconds >= SkipClickIntervalMilliseconds)
             {
                 if (_config.BeforeClickConfirmDelay > 0)
                 {
@@ -344,6 +352,9 @@ public partial class AutoSkipTrigger : ITaskTrigger
                 {
                     InputHub.Background.Keyboard.KeyPress(User32.VK.VK_SPACE);
                 }
+
+                // 点击后等待一段时间再点下一次，给对白完整显示和 OCR 留出时间
+                _prevSkipClickTime = DateTime.Now;
             }
 
             // 对话选项选择

@@ -30,13 +30,18 @@ public sealed class AutoSkipDialogueTextTests
         Assert.Equal("", AutoSkipDialogueText.NormalizeSpeaker(null));
     }
 
-    /// <summary>打字机效果和常见 OCR 抖动应视为同一句，短句之间不做模糊合并。</summary>
+    /// <summary>打字机效果、首尾标点差异和常见 OCR 抖动应视为同一句。</summary>
     [Theory]
     [InlineData("前面好像有人", "前面好像有人，我们过去看看吧！", true)]
     [InlineData("前面好像有人，我们过去看看吧！", "前面好像有人,我们过去看看吧!", true)]
     [InlineData("前面好像有人，我们过去看看吧！", "前面好像有人，我们过去看一看吧！", true)]
+    [InlineData("（有点不妙，虽然可以用我的记忆把内容还原，", "有点不妙，虽然可以用我的记忆把内容还原，但还是先看看有多少信息受到了影响吧...", true)]
+    [InlineData("谢谢你们，听了你们的鼓励我放心多了，我会把我应该做的事情做好，接下来就交给女皇陛", "谢谢你们，听了你们的鼓励我放心多了，我会把我应该做的事情做好，接下来就交给女皇陛下", true)]
+    [InlineData("（前面好像有人）", "前面好像有人", true)]
+    [InlineData("哦", "哦，怎么说？", true)]
+    [InlineData("好", "好的", true)]
     [InlineData("我们走吧", "我们跑吧", false)]
-    [InlineData("好", "好的", false)]
+    [InlineData("是的", "不是", false)]
     [InlineData("", "前面好像有人", false)]
     public void IsSameLine_handles_typewriter_and_ocr_noise(string left, string right, bool expected)
     {

@@ -27,6 +27,34 @@ public sealed class AutoSkipDialogueTrackerTests
         Assert.Equal("后面有人追上来了。", tracker.Flush(Start.AddMilliseconds(800))?.Text);
     }
 
+    /// <summary>首尾括号或逗号不同、长度不同的两帧应合并为同一句，只输出更完整的一份。</summary>
+    [Fact]
+    public void Accept_merges_partial_with_edge_punctuation()
+    {
+        var tracker = new AutoSkipDialogueTracker();
+
+        Assert.Null(tracker.Accept("玛薇卡", "（有点不妙，虽然可以用我的记忆把内容还原，", Start));
+        Assert.Null(tracker.Accept("玛薇卡",
+            "有点不妙，虽然可以用我的记忆把内容还原，但还是先看看有多少信息受到了影响吧...",
+            Start.AddMilliseconds(200)));
+
+        var line = tracker.Accept("玛薇卡", "下一句。", Start.AddMilliseconds(400));
+        Assert.Equal("有点不妙，虽然可以用我的记忆把内容还原，但还是先看看有多少信息受到了影响吧...", line?.Text);
+    }
+
+    /// <summary>单个字的短句继续增长时不应先输出半句。</summary>
+    [Fact]
+    public void Accept_merges_short_partial()
+    {
+        var tracker = new AutoSkipDialogueTracker();
+
+        Assert.Null(tracker.Accept("米提亚", "哦", Start));
+        Assert.Null(tracker.Accept("米提亚", "哦，怎么说？", Start.AddMilliseconds(200)));
+
+        var line = tracker.Accept("米提亚", "下一句。", Start.AddMilliseconds(400));
+        Assert.Equal("哦，怎么说？", line?.Text);
+    }
+
     /// <summary>最后一两句可能没有后续识别，超时后补输出。</summary>
     [Fact]
     public void FlushIfIdle_emits_pending_line_after_timeout()

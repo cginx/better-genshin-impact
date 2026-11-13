@@ -114,13 +114,27 @@ internal static class AutoSkipDialogueText
     }
 
     /// <summary>
-    /// 判断两段文字是否可能是同一句：完全相同、互为前缀（打字机逐字出现），
+    /// 判断两段文字是否可能是同一句：完全相同、逐字出现时的前缀关系、
+    /// 短文本被完整包含在长文本中（OCR 漏读首尾或改读括号），
     /// 或较长文本的二字组相似度足够高（OCR 抖动）。
     /// </summary>
     public static bool IsSameLine(string? left, string? right)
     {
-        var leftKey = NormalizeKey(left);
-        var rightKey = NormalizeKey(right);
+        var leftRaw = NormalizeKey(left);
+        var rightRaw = NormalizeKey(right);
+        if (leftRaw.Length == 0 || rightRaw.Length == 0)
+        {
+            return false;
+        }
+
+        if (string.Equals(leftRaw, rightRaw, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        // 首尾的括号、引号、逗号、省略号经常会被 OCR 多读或少读，比较前先去掉
+        var leftKey = TrimEdgePunctuation(leftRaw);
+        var rightKey = TrimEdgePunctuation(rightRaw);
         if (leftKey.Length == 0 || rightKey.Length == 0)
         {
             return false;
@@ -131,21 +145,56 @@ internal static class AutoSkipDialogueText
             return true;
         }
 
-        // 逐字出现时后一帧是前一帧的延长，保留更长的一份即可
-        if (leftKey.Length >= 2 && rightKey.Length >= 2
-            && (leftKey.StartsWith(rightKey, StringComparison.Ordinal)
-                || rightKey.StartsWith(leftKey, StringComparison.Ordinal)))
+        var shorter = leftKey.Length <= rightKey.Length ? leftKey : rightKey;
+        var longer = leftKey.Length <= rightKey.Length ? rightKey : leftKey;
+
+        // 逐字出现：允许单个字符的短句继续增长，例如“哦”→“哦，怎么说？”
+        if (longer.StartsWith(shorter, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        // OCR 漏掉开头或结尾时，短文本会落在长文本中间
+        if (shorter.Length >= 3 && longer.Contains(shorter, StringComparison.Ordinal))
         {
             return true;
         }
 
         // 短句差一个字就可能是完全不同的对白，只在较长文本上做模糊容错
-        if (leftKey.Length < 6 || rightKey.Length < 6)
+        if (shorter.Length < 6)
         {
             return false;
         }
 
         return BigramDice(leftKey, rightKey) >= 0.8;
+    }
+
+    /// <summary>
+    /// 去掉文本首尾的标点和符号。只影响比较，不改变写入日志的原文。
+    /// </summary>
+    private static string TrimEdgePunctuation(string key)
+    {
+        var start = 0;
+        var end = key.Length - 1;
+        while (start <= end && IsEdgePunctuation(key[start]))
+        {
+            start++;
+        }
+
+        while (end >= start && IsEdgePunctuation(key[end]))
+        {
+            end--;
+        }
+
+        return start > end ? string.Empty : key.Substring(start, end - start + 1);
+    }
+
+    /// <summary>
+    /// 判断字符是否属于首尾可忽略的标点或符号。
+    /// </summary>
+    private static bool IsEdgePunctuation(char character)
+    {
+        return char.IsPunctuation(character) || char.IsSymbol(character);
     }
 
     /// <summary>

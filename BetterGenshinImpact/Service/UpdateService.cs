@@ -13,14 +13,9 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
-using System.Net.Http.Json;
-using System.Security.Cryptography;
 using System.Text;
-using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
-using BetterGenshinImpact.Service.Model.MirrorChyan;
-using Wpf.Ui.Violeta.Controls;
 
 namespace BetterGenshinImpact.Service;
 
@@ -29,8 +24,25 @@ public class UpdateService : IUpdateService
     private readonly ILogger<UpdateService> _logger;
     private readonly IConfigService _configService;
 
-    private const string NoticeUrl = "https://hui-config.oss-cn-hangzhou.aliyuncs.com/bgi/notice.json";
-    private const string DownloadPageUrl = "https://www.bettergi.com/download.html";
+    /// <summary>
+    /// 本仓库的 GitHub Release API，版本检查与更新日志都从这里读取
+    /// </summary>
+    private const string GitHubReleasesUrl = "https://api.github.com/repos/cgix/better-genshin-impact/releases";
+
+    /// <summary>
+    /// 最新正式版本，GitHub 的 latest 接口不会返回预发布版本
+    /// </summary>
+    private const string LatestReleaseUrl = GitHubReleasesUrl + "/latest";
+
+    /// <summary>
+    /// 测试版列表地址，只取最新一条
+    /// </summary>
+    private const string AlphaReleasesUrl = GitHubReleasesUrl + "?per_page=1";
+
+    /// <summary>
+    /// 本仓库的 Release 页面，更新窗口的“其他更新方式”跳转到这里
+    /// </summary>
+    private const string ReleasesPageUrl = "https://github.com/cgix/better-genshin-impact/releases";
 
     /// <summary>
     /// 命名 HttpClient 工厂，版本检查与更新日志使用默认客户端
@@ -120,14 +132,7 @@ public class UpdateService : IUpdateService
                         break;
 
                     case CheckUpdateWindow.CheckUpdateWindowButton.OtherUpdate:
-                        if (option.Channel == UpdateChannel.Stable)
-                        {
-                            Process.Start(new ProcessStartInfo(DownloadPageUrl) { UseShellExecute = true });
-                        }
-                        else
-                        {
-                            Process.Start(new ProcessStartInfo("https://cnb.cool/bettergi/better-genshin-impact/-/releases") { UseShellExecute = true });
-                        }
+                        Process.Start(new ProcessStartInfo(ReleasesPageUrl) { UseShellExecute = true });
                         break;
 
                     case CheckUpdateWindow.CheckUpdateWindowButton.Update:
@@ -163,7 +168,7 @@ public class UpdateService : IUpdateService
 
         if (option.Channel == UpdateChannel.Stable)
         {
-            win.NavigateToHtml(await GetReleaseMarkdownHtmlAsync());
+            win.NavigateToHtml(await GetReleaseMarkdownHtmlAsync(newVersion));
         }
 
         win.ShowDialog();
@@ -171,144 +176,70 @@ public class UpdateService : IUpdateService
 
     private async Task<string> GetLatestVersionAsync(UpdateOption option)
     {
-        if (option.Channel == UpdateChannel.Stable)
+        return await GetLatestGitHubVersionAsync(option.Channel == UpdateChannel.Alpha);
+    }
+
+    /// <summary>
+    /// 从本仓库的 GitHub Release 读取最新版本号。
+    /// 稳定版只取 latest（不含预发布），测试版取第一条发布记录。
+    /// </summary>
+    private async Task<string> GetLatestGitHubVersionAsync(bool includePrerelease)
+    {
+        var httpClient = _httpClientFactory.CreateClient(HttpClientNames.Default);
+        try
         {
-            return await UpdateFromOss();
+            if (!includePrerelease)
+            {
+                var latestJson = await httpClient.GetStringAsync(LatestReleaseUrl);
+                return ReadTagName(JsonConvert.DeserializeObject<Dictionary<string, object>>(latestJson));
+            }
+
+            var releasesJson = await httpClient.GetStringAsync(AlphaReleasesUrl);
+            var releases = JsonConvert.DeserializeObject<List<Dictionary<string, object>>>(releasesJson);
+            return ReadTagName(releases?.FirstOrDefault());
         }
-        else
+        catch (HttpRequestException e) when (e.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Forbidden)
         {
-            return await UpdateFromMirrorChyan();
+            // 仓库还没有发布 Release 或 GitHub API 触发限流时静默跳过，避免每次启动都提示失败
+            _logger.LogDebug("GitHub Release 不可用（{StatusCode}），跳过更新检查", e.StatusCode);
+            return string.Empty;
         }
     }
 
     /// <summary>
-    /// 文档
-    /// https://apifox.com/apidoc/shared/ffdc8453-597d-4ba6-bd3c-5e375c10c789
+    /// 读取 Release 的 tag_name 并去掉可选的 v 前缀。
     /// </summary>
-    /// <returns></returns>
-    private async Task<string> UpdateFromMirrorChyan()
+    private static string ReadTagName(Dictionary<string, object>? release)
     {
-        try
+        if (release is null || !release.TryGetValue("tag_name", out var tagName))
         {
-            const string url = "https://mirrorchyan.com/api/resources/BGI/latest";
-            var queryParams = new Dictionary<string, string>
-            {
-                { "user_agent", "BetterGI" },
-                { "os", "win" },
-                { "arch", "x64" },
-                { "channel", "alpha" }
-            };
-
-            var httpClient = _httpClientFactory.CreateClient(HttpClientNames.Default);
-
-            var finalUrl = $"{url}?{string.Join("&", queryParams.Select(x => $"{x.Key}={x.Value}"))}";
-            var response = await httpClient.GetAsync(finalUrl);
-            LatestResponse? result = null;
-            if (response.StatusCode == HttpStatusCode.OK)
-            {
-                response.EnsureSuccessStatusCode();
-                result = await response.Content.ReadFromJsonAsync<LatestResponse>();
-            }
-            else
-            {
-                // 即使是403、400也尝试读取响应体
-                var content = await response.Content.ReadAsStringAsync();
-                result = JsonConvert.DeserializeObject<LatestResponse>(content);
-            }
-
-            if (result != null)
-            {
-                if (result.Code == 0)
-                {
-                    return result.Data.VersionName;
-                }
-                else if (result.Code < 0)
-                {
-                    Toast.Error(
-                        $"Mirror酱源更新检查失败，意料之外的严重错误，请及时联系 Mirror 酱的技术支持处理\n，错误代码：{result.Code}，错误信息：{result.Msg}");
-                    return string.Empty;
-                }
-                else
-                {
-                    ToastError(result);
-                }
-            }
-        }
-        catch (Exception e)
-        {
-            _logger.LogDebug(e, "Mirror源更新检查失败");
-            Toast.Warning($"Mirror源更新检查失败,{e.Message}");
-
+            return string.Empty;
         }
 
-        return string.Empty;
+        var tag = tagName?.ToString()?.Trim() ?? string.Empty;
+        return tag.StartsWith('v') || tag.StartsWith('V') ? tag[1..] : tag;
     }
 
-    private static void ToastError(LatestResponse response)
-    {
-        if (response.Code == 7001)
-        {
-            Toast.Warning("Mirror酱 CDK 已过期，请重新获取CDK");
-        }
-        else if (response.Code == 7002)
-        {
-            Toast.Warning("Mirror酱 CDK 错误!");
-        }
-        else if (response.Code == 7003)
-        {
-            Toast.Warning("Mirror酱 CDK 今日下载次数已达上限");
-        }
-        else if (response.Code == 7004)
-        {
-            Toast.Warning("Mirror酱 CDK 类型和待下载的资源不匹配");
-        }
-        else if (response.Code == 7005)
-        {
-            Toast.Warning("Mirror酱 CDK 已被封禁");
-        }
-        else
-        {
-            Toast.Warning($"Mirror酱源更新检查失败，错误信息：{response.Msg}");
-        }
-    }
-
-    private async Task<string> UpdateFromOss()
-    {
-        try
-        {
-            var httpClient = _httpClientFactory.CreateClient(HttpClientNames.Default);
-            Notice? notice = await httpClient.GetFromJsonAsync<Notice>(NoticeUrl);
-            string deviceId = DeviceIdHelper.DeviceId;
-
-            if (notice != null)
-            {
-                // 灰度发布逻辑：deviceId 做哈希取余。string.GetHashCode 每个进程随机，
-                // 改用 SHA256 前 4 字节，同一设备每次启动的灰度结果相同
-                var hash = BitConverter.ToUInt32(SHA256.HashData(Encoding.UTF8.GetBytes(deviceId)), 0);
-                var mod = (int)(hash % 10);
-                if (mod < notice.Gray)
-                {
-                    return notice.Version;
-                }
-            }
-        }
-        catch (Exception e)
-        {
-            _ = e;
-        }
-
-        return string.Empty;
-    }
-
-    private async Task<string> GetReleaseMarkdownHtmlAsync()
+    private async Task<string> GetReleaseMarkdownHtmlAsync(string version)
     {
         try
         {
             // GitHub API 要求带 UA，默认客户端会补上 BetterGI/{版本}
             var httpClient = _httpClientFactory.CreateClient(HttpClientNames.Default);
-            string jsonString =
-                await httpClient.GetStringAsync(
-                    "https://api.github.com/repos/babalae/better-genshin-impact/releases/latest");
+            string jsonString;
+            try
+            {
+                // 按版本对应的 tag 读取更新日志；测试版不会被 latest 接口返回
+                var releaseUrl = string.IsNullOrWhiteSpace(version)
+                    ? LatestReleaseUrl
+                    : $"{GitHubReleasesUrl}/tags/{Uri.EscapeDataString(version)}";
+                jsonString = await httpClient.GetStringAsync(releaseUrl);
+            }
+            catch (HttpRequestException)
+            {
+                jsonString = await httpClient.GetStringAsync(LatestReleaseUrl);
+            }
+
             var jsonDict = JsonConvert.DeserializeObject<Dictionary<string, object>>(jsonString);
 
             if (jsonDict != null)
